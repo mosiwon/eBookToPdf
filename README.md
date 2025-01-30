@@ -3,6 +3,18 @@ E-Book PDF 추출 프로그램<br /><br />
 제작 과정 : https://eastshine12.tistory.com/55
 <br /><br /><br />
 
+# Requirement
+```python
+pip install pyobjc
+pip install pyobjc-framework-Quartz
+pip install pyobjc-framework-AVFoundation
+pip install pyobjc-framework-Cocoa
+pip install pillow
+pip install pyside6
+pip install pyautogui
+pip install pynput
+pip install natsort
+```
 
 # 프로그램 화면
 <img src="gui_image_win.png" width="500">
@@ -23,7 +35,7 @@ eBookToPdf/dist/ebook_to_pdf.exe
 <br /><br /><br />
 
 # 사용 시 유의사항
-1. 해당 프로그램은 windows 전용 app이다.
+1. 해당 프로그램은 windows 전용 app이다. // mac OS 15.0 
 2. 이미지 좌표 영역이 뷰어 영역을 벗어나면 안된다.
 3. 반드시 키보드 오른쪽 방향키를 통해 다음 페이지 전환이 되어야 한다.
 4. 페이지 수가 많을 경우 PDF 용량이 꽤 되므로 HDD 용량이 여유가 있어야 한다.

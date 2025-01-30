@@ -1,20 +1,18 @@
 import os
 import sys
 import time
-import mss
-import mss.tools
+from PIL import Image
 import pyautogui
 import natsort
 import shutil
-
 from pynput import mouse
 from pynput.keyboard import Key, Controller
-from PIL import Image
-
+import Quartz
+from AVFoundation import *
+from Cocoa import NSURL
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QMainWindow, QVBoxLayout, \
-    QHBoxLayout, QSlider
-
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, 
+                             QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout, QSlider)
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -29,6 +27,7 @@ class MainWindow(QMainWindow):
         self.speed = 0.1
         self.region = {}
         self.file_list = []
+        self.recorder = None
 
         # 앱 타이틀
         self.setWindowTitle("eBookToPdf")
@@ -115,7 +114,6 @@ class MainWindow(QMainWindow):
         box5.addWidget(self.speed_label)
         box5.addWidget(self.speed_slider)
 
-
         box6 = QHBoxLayout()
         box6.addWidget(self.stat)
         box6.addWidget(self.button4)
@@ -141,9 +139,27 @@ class MainWindow(QMainWindow):
         container.setLayout(layout)
 
         self.setCentralWidget(container)
-
-        # 창 크기 고정
         self.setFixedSize(QSize(450, 320))
+
+    def capture_screen(self):
+        # 화면 캡처 세션 설정
+        session = AVCaptureSession.alloc().init()
+        screen_input = AVCaptureScreenInput.alloc().initWithDisplayID_(Quartz.CGMainDisplayID())
+        
+        # 캡처 영역 설정
+        screen = Quartz.CGDisplayBounds(Quartz.CGMainDisplayID())
+        capture_rect = Quartz.CGRectMake(
+            self.posX1,
+            screen.size.height - self.posY2,
+            self.posX2 - self.posX1,
+            self.posY2 - self.posY1
+        )
+        screen_input.setCropRect_(capture_rect)
+        
+        if session.canAddInput_(screen_input):
+            session.addInput_(screen_input)
+        
+        return session
 
     def 초기화(self):
         self.num = 1
@@ -184,12 +200,12 @@ class MainWindow(QMainWindow):
 
         with mouse.Listener(on_click=on_click) as listener:
             listener.join()
+
     def 속도_변경(self):
         self.speed = self.speed_slider.value() / 10.0
         self.speed_label.setText(f'캡쳐 속도: {self.speed:.1f}초')
 
     def btn_click(self):
-
         if self.input1.text() == '':
             self.stat.setText('페이지 수를 입력하세요.')
             self.input1.setFocus()
@@ -207,9 +223,11 @@ class MainWindow(QMainWindow):
 
         self.total_page = int(self.input1.text())
 
-        # The screen part to capture
-        self.region = {'top': self.posY1, 'left': self.posX1, 'width': self.posX2 - self.posX1,
-                  'height': self.posY2 - self.posY1}
+        # 화면 캡처 세션 설정
+        session = self.capture_screen()
+        output = AVCaptureStillImageOutput.alloc().init()
+        if session.canAddOutput_(output):
+            session.addOutput_(output)
 
         m = mouse.Controller()
         mouse_left = mouse.Button.left
@@ -225,17 +243,17 @@ class MainWindow(QMainWindow):
             time.sleep(2)
             m.position = (pos_x, pos_y)
 
-            # 파일 저장
-            while self.num <= self.total_page:
+            session.startRunning()
 
+            while self.num <= self.total_page:
                 time.sleep(self.speed)
 
-                # 캡쳐하기
-                with mss.mss() as sct:
-                    # Grab the data
-                    img = sct.grab(self.region)
-                    # Save to the picture file
-                    mss.tools.to_png(img.rgb, img.size, output=f'pdf_images/img_{str(self.num).zfill(4)}.png')
+                # 현재 프레임 캡처
+                connection = output.connectionWithMediaType_(AVMediaTypeVideo)
+                output.captureStillImageAsynchronouslyFromConnection_completionHandler_(
+                    connection,
+                    lambda buffer, error: self.save_frame(buffer, error, f'pdf_images/img_{str(self.num).zfill(4)}.png')
+                )
 
                 # 페이지 넘기기
                 kb_control.press(Key.right)
@@ -243,14 +261,15 @@ class MainWindow(QMainWindow):
 
                 self.num += 1
 
+            session.stopRunning()
+            
             print("캡쳐 완료!")
             self.stat.setText('PDF 변환 중..')
+            
             path = 'pdf_images'
-            # 이미지 파일 리스트
             self.file_list = os.listdir(path)
             self.file_list = natsort.natsorted(self.file_list)
 
-            # .DS_Store 파일이름 삭제
             if '.DS_Store' in self.file_list:
                 del self.file_list[0]
 
@@ -281,16 +300,20 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print('예외 발생. ', e)
             self.stat.setText('오류 발생. 종료 후 다시 시도해주세요.')
+            if session.isRunning():
+                session.stopRunning()
 
         finally:
             self.num = 1
             self.file_list = []
 
+    def save_frame(self, buffer, error, output_path):
+        if buffer is not None:
+            image_data = AVCaptureStillImageOutput.jpegStillImageNSDataRepresentation_(buffer)
+            image_data.writeToFile_atomically_(output_path, True)
+
 
 app = QApplication(sys.argv)
-
 window = MainWindow()
 window.show()
-
-# 이벤트 루프 시작
 app.exec()
